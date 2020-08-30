@@ -16,6 +16,8 @@ from glassimaging.dataloading.btd import BTD
 from glassimaging.dataloading.generic import GenericData
 from glassimaging.dataloading.transforms.totensor import ToTensor
 
+from glassimaging.preprocessing.set_patch_size import set_patch_size
+
 
 class JobApply(Job):
 
@@ -34,6 +36,7 @@ class JobApply(Job):
                 "Output type": {"type": "string"},
                 "Dataset": {"type": "string"},
                 "Only first": {"type": "boolean"},
+                "Brainmask": {"type": "boolean"},
             },
             "required": ["Nifti Source", "Patch size", "Batch size", "Dataset"]
         }
@@ -43,7 +46,9 @@ class JobApply(Job):
         myconfig = self.config
 
         ##### Set network specifics
-        patchsize = myconfig["Patch size"]
+        # check if patch size isn't too large. If so make it smaller
+        # patchsize = myconfig["Patch size"]
+        patchsize = tuple(set_patch_size(myconfig))
         batchsize = myconfig["Batch size"]
         output_type = myconfig["Output type"]
         only_first = myconfig["Only first"]
@@ -56,7 +61,10 @@ class JobApply(Job):
         if self.config['Dataset'] == 'Brats18':
             dataset = Brats18.fromFile(loc)
         elif self.config['Dataset'] == 'BTD':
-            dataset = BTD.fromFile(loc)
+            if self.config['Brainmask'] == False:
+                dataset = BTD.fromFile(loc, brainmask=False)
+            else:
+                dataset = BTD.fromFile(loc, brainmask=True)
         elif self.config['Dataset'] == 'Generic':
             dataset = GenericData.fromFile(loc)
 
@@ -70,7 +78,7 @@ class JobApply(Job):
         sequences = config_model["Sequences"]
 
         transform = ToTensor()
-        testset = dataset.getDataset(splits, sequences, transform=transform)
+        testset = dataset.getDataset(splits, sequences, transform=transform, preprocess_config=self.config)
         dataloader = DataLoader(testset, batch_size=batchsize, num_workers=0, shuffle=True)
 
         evaluator = StandardEvaluator.loadFromCheckpoint(os.path.join(loc_model, 'model.pt'))
@@ -82,6 +90,8 @@ class JobApply(Job):
             header_sources = sample_batched["header_source"]
             t1_sources = sample_batched["t1_source"]
             resultpaths = [os.path.join(self.tmpdir, s + '_segmented.nii.gz') for s in subjects]
+            # check if patch size isn't too large. If so make it smaller
+            print("jobeval", type(images), print(images))
             evaluator.segmentNifti(images, header_sources, patchsize, resultpaths)
             for i in range(0, len(subjects)):
                 plotResultImageWithoutGT(t1_sources[i], resultpaths[i], self.tmpdir,

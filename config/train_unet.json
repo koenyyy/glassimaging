@@ -1,18 +1,36 @@
 {
-				"Epochs": 1,
-				"Splits": [0],
-				"Model Source": "setup_unet",
-				"Patch size": [
-				 128,
-				 128,
-				 128
-				],
-                "Num Workers": 0,
-				"Nifti Source": "D:/MICCAI_BraTS_2018_Data_Training/*/",
-                "Dataset": "Brats18",
-				"Batch size": 1,
-				"Batches per epoch": 1,
-				"Testsplits": [1],
-				"Sequences": ["t2", "t1", "flair", "t1Gd"],
-                "Loss": "crossentropy"
-			}
+    "Epochs": 10,
+    "Splits": [
+        0,
+        1,
+        2
+    ],
+    "Model Source": "setup_unet",
+    "Patch size": [
+        16,
+        16,
+        16
+    ],
+    "Num Workers": 0,
+    "Nifti Source": "/media/data/kvangarderen/BTD",
+    "Dataset": "BTD",
+    "Batch size": 1,
+    "Batches per epoch": 1,
+    "Testsplits": [
+        3
+    ],
+    "Sequences": [
+        "t1t2"
+    ],
+    "Loss": "dice",
+    "loss_weights": [
+        0.3,
+        1.0
+    ],
+    "Brainmask": false,
+    "seed": 364,
+    "use_normalization": true,
+    "technique": "z-score",
+    "using_otsu_ROI": true,
+    "resampling_factor": 2
+}

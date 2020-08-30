@@ -12,6 +12,8 @@ from glassimaging.dataloading.generic import SingleInstanceDataset
 from glassimaging.dataloading.transforms.totensor import ToTensor
 from glassimaging.evaluation.utils import logDataLoader
 
+from glassimaging.preprocessing.set_patch_size import set_patch_size
+
 
 class JobApplySingle(Job):
 
@@ -28,7 +30,8 @@ class JobApplySingle(Job):
                 "Nifti paths": {"type": "array"},
                 "Brainmask path": {"type": "string"},
                 "Model path": {"type": "string"},
-                "Patch size": {"type": "array"}
+                "Patch size": {"type": "array"},
+                "Brainmask": {"type": "boolean"},
             },
             "required": ["Patch size"]
         }
@@ -38,7 +41,9 @@ class JobApplySingle(Job):
         myconfig = self.config
 
         ##### Set network specifics
-        patchsize = myconfig["Patch size"]
+        # check if patch size isn't too large. If so make it smaller
+        # patchsize = myconfig["Patch size"]
+        patchsize = set_patch_size(myconfig)
 
         ##### Load model from source step
         loc_model = myconfig["Model path"]
@@ -51,6 +56,9 @@ class JobApplySingle(Job):
 
         sample_batched = next(iter(dataloader))
         images = sample_batched["data"]
+
+
+
         header_sources = sample_batched["header_source"]
         resultpaths = [os.path.join(self.tmpdir, 'segmentation.nii.gz')]
         evaluator.segmentNifti(images, header_sources, patchsize, resultpaths)

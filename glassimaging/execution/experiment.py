@@ -17,13 +17,13 @@ import json
 from datetime import datetime as dt
 
 class Experiment():
-    
+
     def __init__(self, configfile, name, directory, platform = 'bigr-nzxt-7'):
         ### Create a unique name to prevent duplicate folders in the tmp dir
         self.platform = platform
         if self.platform == 'gpucluster':
             os.umask(0)
-        
+
         self.name = dt.now().strftime("%Y%m%d%H%M%S_") + name
         self.outputdir = os.path.join(directory, self.name)
         os.mkdir(self.outputdir)
@@ -32,17 +32,17 @@ class Experiment():
         self.logger.addHandler(logging.FileHandler("{0}/{1}.log".format(self.outputdir, self.name)))
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
         self.logger.setLevel(logging.DEBUG)
-        
+
         ## Load the config and fetch the job keys
         self.config = self.loadConfig(configfile)
         self.joblist = self.config["jobs"].keys()
         self.executionlist = self.config["execution"]
-        
-        
+
+
     def loadConfig(self, path):
         with open(path, 'r') as file:
             return json.load(file)
-        
+
     def saveConfig(self,path, config):
         with open(path, 'w') as file:
             json.dump(config, file)
@@ -70,7 +70,7 @@ class Experiment():
                     jobscripts[name] = self.getScriptForJob(name)
                     configfiles[name] = self.prepareConfig(name)
                     for d in self.config["jobs"][name]['dependencies']:
-                        if not d in self.joblist: 
+                        if not d in self.joblist:
                             raise Exception('Dependency {} of job {} not in the list of jobs.'.format(d, name))
                         elif d in joblist:
                             pass ## Result will be created in job
@@ -100,7 +100,7 @@ class Experiment():
 
     def getTypeForJob(self, jobname):
         return self.config["jobs"][jobname]['type']
-    
+
     """ The configuration is composed of both a file and a specific configuration
         Both can be either present or not, if neither are present the configuration is simply empty.
         A specific configuration defined in the experiment config overwrites any included file
@@ -126,7 +126,7 @@ class Experiment():
         elif platform == 'bigrcluster':
             return self.getExecuteStringBIGRCluster(names,jobscripts, configfiles, job_outputdirs)
 
-        
+
     def getExecuteStringBIGRCluster(self, names, jobscripts, configfiles, outputdirs):
         string = ''
         for n in names:
@@ -150,7 +150,7 @@ class Experiment():
             string = string + 'rm -r $TMPDIR/{name}'.format(\
                                                         name = n)
         return string
-        
+
     def getExecuteStringGPUCluster(self, names, jobscripts, configfiles, outputdirs):
         string = ''
         for n in names:
@@ -174,10 +174,10 @@ class Experiment():
             return self.getCopyStringGPUCluster(copy_jobs)
         elif platform == 'bigrcluster':
             return self.getCopyStringBIGRCluster(copy_jobs)
-        
+
     def getCopyStringBIGRCluster(self, copy_jobs):
         copystring = ''
-        for d in copy_jobs: 
+        for d in copy_jobs:
             olddir = self.jobDirectories[d]
             newdir = d
             copystring = copystring + f'cp -r {olddir} {self.outputdir}/{newdir} \n'
@@ -185,43 +185,49 @@ class Experiment():
 
     def getCopyStringCartesius(self, copy_jobs):
         copystring = ''
-        for d in copy_jobs: 
+        for d in copy_jobs:
             olddir = self.jobDirectories[d]
             newdir = d
             copystring = copystring + 'cp -r {olddir}/result $TMPDIR/{newdir} \n'.format(olddir=olddir, newdir=newdir)
         return copystring
-            
+
     def getCopyStringGPUCluster(self, copy_jobs):
         copystring = ''
-        for d in copy_jobs: 
+        for d in copy_jobs:
             olddir = self.jobDirectories[d]
             newdir = d
             copystring = copystring + 'cp -r {olddir}/result $MY_TMP_DIR/{newdir}\n'.format(olddir=olddir, newdir=newdir)
         return copystring
-        
+
 
     """
         Edit this configuration to change the time limit, partition or location of log files
     """
     def getSlurmConfig(self, platform):
+        self.logger.info('############## {n}'.format(n=self.config))
+        if self.config.get("timelimit") is not None:
+            timelimit = self.config["timelimit"]
+        else:
+            timelimit = "2-00:00:00"
+        self.logger.info('############## Timelimit: {n}'.format(n=timelimit))
+
         if platform == 'cartesius' or platform == 'bigrcluster':
             return {
                 'partition': 'gpu',
-                'timelimit': '2-00:00:00',
+                'timelimit': timelimit,
                 'outfile': os.path.join(self.outputdir, '%j_out.out'),
                 'errfile': os.path.join(self.outputdir, '%j_err.log')
-                }
+            }
         elif platform == 'gpucluster':
             return {
                 'gres': 'gpu:1',
-                'timelimit': '2-00:00:00',
+                'timelimit': timelimit,
                 'outfile': os.path.join(self.outputdir, '%j_out.out'),
                 'errfile': os.path.join(self.outputdir, '%j_err.log'),
-                'ntasks':'6',
-                'mem':'14G',
-                }
-            
-            
+                'ntasks': '6',
+                'mem': '14G',
+            }
+
     def getTemplatefile(self, platform):
         if platform == 'cartesius':
             return 'glassimaging/execution/templates/cartesius.job'
@@ -243,7 +249,7 @@ class Experiment():
         ###### GPU cluster has permission issues
         if platform == 'gpucluster':
             os.umask(0)
-        
+
         ######## Make a local directory for each subjob
         job_outputdirs = {}
         for n in names:
@@ -299,14 +305,14 @@ class Experiment():
                 runJob(jobtype, n, configfiles[n], self.outputdir)
             return 0
 
-    
-    """ Release log files. """        
+
+    """ Release log files. """
     def tearDown(self):
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
-    
+
 if __name__ == '__main__':
     configfile = sys.argv[2]
     name = sys.argv[1]

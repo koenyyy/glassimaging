@@ -1,9 +1,10 @@
 {
     "Model": ["resunet", {
          "k": 1,
-         "inputsize": 4,
+         "inputsize": 1,
          "outputsize": 5
     }
     ]
-   
+
 }
+

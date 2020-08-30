@@ -89,19 +89,19 @@ class GenericData(NiftiDataset):
             for p in splits[i]:
                 self.df.at[p, 'split'] = i
 
-    def getDataset(self, splits=(), sequences = None, transform=None):
+    def getDataset(self, splits=(), sequences = None, transform=None, preprocess_config=None):
         if len(splits) == 0:
             splits = range(0, self.nsplits)
         if sequences is None:
             sequences = self.available_sequences
         dataset = GenericDataset(self.df.loc[[s in splits for s in self.df['split']]], sequences,
-                             transform=transform, brainmask=self.brainmask)
+                             transform=transform, brainmask=self.brainmask, preprocess_config=preprocess_config)
         return dataset
 
 
 class GenericDataset(NiftiDataset, Dataset):
 
-    def __init__(self, dataframe, sequences, transform=None, brainmask=True):
+    def __init__(self, dataframe, sequences, transform=None, brainmask=True, preprocess_config=None):
         Dataset.__init__(self)
         NiftiDataset.__init__(self)
         self.brainmask = brainmask
@@ -109,6 +109,7 @@ class GenericDataset(NiftiDataset, Dataset):
         self.sequences = sequences
         self.patients = self.df.index.values
         self.transform = transform
+        self.config_file = preprocess_config
 
     def __len__(self):
         return len(self.patients)
@@ -116,7 +117,11 @@ class GenericDataset(NiftiDataset, Dataset):
     def __getitem__(self, idx):
         patientname = self.patients[idx]
 
-        image = self.loadSubjectImagesWithoutSeg(patientname, self.sequences, normalized=False)
+        image = self.loadSubjectImagesWithoutSeg(patientname, self.sequences,
+                                                 normalized=self.config_file['use_normalization'],
+                                                 technique=self.config_file['technique'],
+                                                 using_otsu_ROI=self.config_file['using_otsu_ROI'],
+                                                 resampling_factor=self.config_file['resampling_factor'])
         if self.brainmask:
             brainmask = self.loadSegBinarize(self.df.loc[patientname]['brainmask'])
 

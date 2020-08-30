@@ -1,14 +1,24 @@
 {
-				"Nifti Source": "D:/MICCAI_BraTS_2018_Data_Training/*/",
-				"Splits": [0],
-				"Model Source": "train_unet",
-				"Patch size": [
-                    128,
-				    128,
-				    128
-				],
-				"Batch size": 1,
-				"Output type": "save",
-				"Only first": true,
-                "Dataset": "Brats18"
-			}
+    "Nifti Source": "/media/data/kvangarderen/BTD",
+    "Splits": [
+        0,
+        1,
+        2
+    ],
+    "Model Source": "train_unet",
+    "Patch size": [
+        16,
+        16,
+        16
+    ],
+    "Batch size": 1,
+    "Output type": "save",
+    "Only first": false,
+    "Dataset": "BTD",
+    "Brainmask": false,
+    "seed": 364,
+    "use_normalization": true,
+    "technique": "z-score",
+    "using_otsu_ROI": true,
+    "resampling_factor": 2
+}

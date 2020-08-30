@@ -80,15 +80,26 @@ def segmentWholeArray(input_array, inputsize, targetsize, trainer):
     return output
 
 def plotResultImage(datamanager, resultpath, savepath, subject, output_type='save'):
-    basefile = datamanager.getFileName(subject, 't1')
+    try:
+        basefile = datamanager.getFileName(subject, 't1')
+    except:
+        try:
+            basefile = datamanager.getFileName(subject, 'ct')
+        except:
+            basefile = datamanager.getFileName(subject, 't1t2')
     segfile = datamanager.getFileName(subject, 'seg')
     if output_type == 'save':
         figure, (axes1, axes2) = plt.subplots(2, 1, figsize=(10, 10))
         cut = plotting.find_xyz_cut_coords(segfile, activation_threshold=0.5)
-        plotting.plot_roi(resultpath, basefile, cut_coords=cut, axes=axes1, title='Result')
-        plotting.plot_roi(segfile, basefile, cut_coords=cut, axes=axes2, title='Target')
-        plt.savefig(os.path.join(savepath, 'result_' + subject + '.png'))
-        plt.close()
+        # change cut to none if it appears to be an empty array
+        try:
+            if cut == []: cut = None
+            plotting.plot_roi(resultpath, basefile, cut_coords=cut, axes=axes1, title='Result')
+            plotting.plot_roi(segfile, basefile, cut_coords=cut, axes=axes2, title='Target')
+            plt.savefig(os.path.join(savepath, 'result_' + subject + '.png'))
+            plt.close()
+        except:
+            logging.info('Subject ' + str(subject) + ' couldnt be plotted as a result of an absent ROI')
         logging.info('Subject ' + str(subject) + ' plotted with image ' + basefile + '.')
     elif output_type == 'show':
         figure, (axes1, axes2) = plt.subplots(2, 1, figsize=(10, 10))
@@ -209,4 +220,3 @@ def logDataLoader(dataloader, directory):
         plt.colorbar()
         plt.savefig(os.path.join(directory, 'batch_{}_input.png'.format(subj[i])))
         plt.close()
-

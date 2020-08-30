@@ -2,11 +2,13 @@
 
 import glob
 import os
+import sys
+
 import pandas as pd
 from glassimaging.dataloading.niftidataset import NiftiDataset
 import logging
 import json
-import nibabel as nib
+import SimpleITK as sitk
 import numpy as np
 from torch.utils.data import Dataset
 
@@ -68,7 +70,6 @@ class BTD(NiftiDataset):
         for seq in self.sequences:
             self.df = self.df.loc[self.df[seq] != '']
         self.patients = self.df.index.values
-
         self.createCVSplits(nsplits)
 
     """Create a datamanager object from the filesystem
@@ -91,27 +92,27 @@ class BTD(NiftiDataset):
             for p in splits[i]:
                 self.df.at[p, 'split'] = i
 
-    def getDataset(self, splits=(), sequences = None, transform=None):
+    def getDataset(self, splits=(), sequences = None, transform=None, preprocess_config=None):
         if len(splits) == 0:
             splits = range(0, self.nsplits)
         if sequences is None:
             sequences = self.available_sequences
         dataset = BTDDataset(self.df.loc[[s in splits for s in self.df['split']]], sequences,
-                             transform=transform, brainmask=self.brainmask, segmentation=self.segmentation)
+                             transform=transform, brainmask=self.brainmask, segmentation=self.segmentation, preprocess_config=preprocess_config)
         return dataset
 
-    def getBrainmaskDataset(self, splits=(), sequences=None, transform=None):
+    def getBrainmaskDataset(self, splits=(), sequences=None, transform=None, preprocess_config=None):
         if len(splits) == 0:
             splits = range(0, self.nsplits)
         if sequences is None:
             sequences = self.available_sequences
         dataset = BTDBrainmaskDataset(self.df.loc[[s in splits for s in self.df['split']]], sequences,
-                             transform=transform)
+                             transform=transform, preprocess_config=preprocess_config)
         return dataset
 
 class BTDDataset(NiftiDataset, Dataset):
 
-    def __init__(self, dataframe, sequences, transform=None, brainmask=True, segmentation=True):
+    def __init__(self, dataframe, sequences, transform=None, brainmask=True, segmentation=True, preprocess_config=None):
         Dataset.__init__(self)
         NiftiDataset.__init__(self)
         self.brainmask = brainmask
@@ -120,6 +121,13 @@ class BTDDataset(NiftiDataset, Dataset):
         self.patients = self.df.index.values
         self.transform = transform
         self.segmentation = segmentation
+        self.config_file = preprocess_config
+
+        # # Loading the specialized config settings from file
+        # config_file = os.path.join(sys.path[0], 'config', 'preprocess_setup.json')
+        # with open(config_file, 'r') as config_json:
+        #     config_json_data = json.load(config_json)
+        # self.config_file = config_json_data
 
     def __len__(self):
         return len(self.patients)
@@ -127,10 +135,20 @@ class BTDDataset(NiftiDataset, Dataset):
     def __getitem__(self, idx):
         patientname = self.patients[idx]
 
-        (image, segmentation) = self.loadSubjectImages(patientname, self.sequences, normalized=False)
+        (image, segmentation) = self.loadSubjectImages(patientname, self.sequences,
+                                                       normalized=self.config_file['use_normalization'],
+                                                       technique=self.config_file['technique'],
+                                                       using_otsu_ROI=self.config_file['using_otsu_ROI'],
+                                                       resampling_factor=self.config_file['resampling_factor'])
+
         if self.brainmask:
             brainmask = self.loadSegBinarize(self.df.loc[patientname]['brainmask'])
-        brainmask = brainmask.astype(int)
+            brainmask = brainmask.astype(int)
+        # print(image.dtype)
+        # image = np.reshape(image, (image.shape[0], *brainmask.shape))
+        # image = image.astype(float)
+        # print(image.dtype)
+        # print(image.shape, brainmask.shape)
         for i in range(0, image.shape[0]):
             img = image[i]
             maxval = np.percentile(img, 99)
@@ -165,15 +183,17 @@ class BTDDataset(NiftiDataset, Dataset):
         with open(path, 'w') as file:
             json.dump(self.patients.tolist(), file)
 
+
 class BTDBrainmaskDataset(NiftiDataset, Dataset):
 
-    def __init__(self, dataframe, sequences, transform=None):
+    def __init__(self, dataframe, sequences, transform=None, preprocess_config=None):
         Dataset.__init__(self)
         NiftiDataset.__init__(self)
         self.df = dataframe
         self.sequences = sequences
         self.patients = self.df.index.values
         self.transform = transform
+        self.config_file = preprocess_config
 
     def __len__(self):
         return len(self.patients)
@@ -181,7 +201,12 @@ class BTDBrainmaskDataset(NiftiDataset, Dataset):
     def __getitem__(self, idx):
         patientname = self.patients[idx]
 
-        image = self.loadSubjectImagesWithoutSeg(patientname, self.sequences, normalized=False)
+        image = self.loadSubjectImagesWithoutSeg(patientname, self.sequences,
+                                                 normalized=self.config_file['use_normalization'],
+                                                 technique=self.config_file['technique'],
+                                                 using_otsu_ROI=self.config_file['using_otsu_ROI'],
+                                                 resampling_factor=self.config_file['resampling_factor'])
+
         brainmask = self.loadSegBinarize(self.df.loc[patientname]['brainmask'])
 
         for i in range(0, image.shape[0]):

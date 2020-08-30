@@ -16,14 +16,20 @@ from glassimaging.dataloading.btd import BTD
 from glassimaging.dataloading.egd import EGD
 from glassimaging.dataloading.brainmask import BrainmaskDataloader
 from glassimaging.dataloading.tissue import TissueDataloader
+from glassimaging.dataloading.hippocampus import Hippocampus
+from glassimaging.dataloading.lipodata import LipoData
+from glassimaging.dataloading.lits import LitsData
+from glassimaging.dataloading.ergo import ErgoData
 from glassimaging.dataloading.transforms.totensor import ToTensor
 from glassimaging.dataloading.transforms.binaryseg import BinarySegmentation
 from glassimaging.dataloading.transforms.compose import Compose
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from glassimaging.preprocessing.set_patch_size import set_patch_size
+
 class JobEval(Job):
-    
+
     def __init__(self, configfile, name,  tmpdir, homedir = None, uid = None):
         super().__init__(configfile, name,  tmpdir, homedir, uid = uid)
 
@@ -48,6 +54,7 @@ class JobEval(Job):
                 "Whole Tumor": {"type": "boolean"},
                 "Splits from File": {"type": "string"},
                 "Sequences": {"type": "array"},
+                "Brainmask": {"type": "boolean"},
             },
             "required": ["Nifti Source", "Patch size", "Batch size", "Dataset", "Splits"]
         }
@@ -55,16 +62,19 @@ class JobEval(Job):
     def run(self):
         ##### Create identifiers
         myconfig = self.config
-        
+
         ##### Set network specifics
-        patchsize = myconfig["Patch size"]
+        # check if patch size isn't too large. If so make it smaller
+        # patchsize = myconfig["Patch size"]
+        patchsize = tuple(set_patch_size(myconfig))
+
         batchsize = myconfig["Batch size"]
         output_type = myconfig["Output type"]
         only_first = myconfig["Only first"]
-    
+
         #### Data specifics
         splits = myconfig["Splits"]
-        
+
         ##### load datamanager
         loc = myconfig["Nifti Source"]
         if self.config['Dataset'] == 'Brats18':
@@ -72,16 +82,27 @@ class JobEval(Job):
         elif self.config['Dataset'] == 'EGD':
             dataset = EGD.fromFile(loc)
         elif self.config['Dataset'] == 'BTD':
-            dataset = BTD.fromFile(loc)
+            if self.config['Brainmask'] == False:
+                dataset = BTD.fromFile(loc, brainmask=False)
+            else:
+                dataset = BTD.fromFile(loc, brainmask=True)
         elif self.config['Dataset'] == 'Brainmask':
             dataset = BrainmaskDataloader.fromFile(loc)
         elif self.config['Dataset'] == 'Tissue':
             dataset = TissueDataloader.fromFile(loc)
-        
+        elif self.config['Dataset'] == 'Hippocampus':
+            dataset = Hippocampus.fromFile(loc)
+        elif self.config['Dataset'] == 'LipoData':
+            dataset = LipoData.fromFile(loc)
+        elif self.config['Dataset'] == 'LitsData':
+            dataset = LitsData.fromFile(loc)
+        elif self.config['Dataset'] == 'ErgoData':
+            dataset = ErgoData.fromFile(loc)
+
         if "Splits from File" in myconfig:
             dataset.loadSplits(myconfig["Splits from File"])
 
-        
+
         ##### Load model from source step
         sourcestep = myconfig["Model Source"]
         loc_model = os.path.join(self.datadir, sourcestep)
@@ -91,9 +112,7 @@ class JobEval(Job):
             sequences = self.config["Sequences"]
         else:
             sequences = config_model["Sequences"]
-        print(sequences)
-        print(config_model)
-        
+
         transforms = [ToTensor()]
         if 'Whole Tumor' in self.config and self.config["Whole Tumor"]:
             transforms = [BinarySegmentation()] + transforms
@@ -101,7 +120,7 @@ class JobEval(Job):
         if 'Target' in self.config and self.config['Target'] == 'Brainmask':
             testset = dataset.getBrainmaskDataset(splits, sequences, transform=transform)
         else:
-            testset = dataset.getDataset(splits, sequences, transform=transform)
+            testset = dataset.getDataset(splits, sequences, transform=transform, preprocess_config=self.config)
         dataloader = DataLoader(testset, batch_size=batchsize, num_workers=0, shuffle=True)
 
         evaluator = StandardEvaluator.loadFromCheckpoint(os.path.join(loc_model, 'model.pt'))
@@ -120,7 +139,7 @@ class JobEval(Job):
             classifications = evaluator.segmentNifti(images, segfiles, patchsize, resultpaths)
             for i in range(0, len(subjects)):
                 seg = segs[i].numpy()
-                #plotResultImage(dataset, resultpaths[i], self.tmpdir, subjects[i], output_type=output_type)
+                plotResultImage(dataset, resultpaths[i], self.tmpdir, subjects[i], output_type=output_type)
                 for c in range(0,5):
                     truth = seg == c
                     positive = classifications[i] == c
@@ -151,7 +170,7 @@ class JobEval(Job):
         results.to_csv(os.path.join(self.tmpdir, 'results_eval.csv'))
         dataset.saveSplits(self.tmpdir)
         self.logger.info('evaluation finished. Dice coefficient: whole: {}, core: {}, enhancing: {}'.format(dice_mean, dice_core, dice_enhancing))
-        
+
         self.tearDown()
 
 

@@ -22,9 +22,11 @@ from glassimaging.dataloading.transforms.binaryseg import BinarySegmentation
 from glassimaging.models.diceloss import DiceLoss
 from torch.nn import CrossEntropyLoss
 
+from glassimaging.preprocessing.set_patch_size import set_patch_size
+
 
 class JobTrainMultipath(Job):
-    
+
     def __init__(self, configfile, name,  tmpdir, homedir=None, uid=None):
         super().__init__(configfile, name,  tmpdir, homedir, uid=uid)
 
@@ -49,7 +51,8 @@ class JobTrainMultipath(Job):
                 "Splits from File": {"type": "string"},
                 "Sequences": {"type": "array"},
                 "Model Sources": {"type": "array"},
-                "Freeze UNets": {"type": "boolean"}
+                "Freeze UNets": {"type": "boolean"},
+                "Brainmask": {"type": "boolean"},
             },
             "required": ["Nifti Source", "Patch size", "Batch size", "Dataset", "Epochs", "Num Workers",
                          "Testsplits", "Splits", "Freeze UNets"]
@@ -62,7 +65,10 @@ class JobTrainMultipath(Job):
         if self.config['Dataset'] == 'Brats18':
             dataset = Brats18.fromFile(loc)
         elif self.config['Dataset'] == 'BTD':
-            dataset = BTD.fromFile(loc)
+            if self.config['Brainmask'] == False:
+                dataset = BTD.fromFile(loc, brainmask=False)
+            else:
+                dataset = BTD.fromFile(loc, brainmask=True)
         elif self.config['Dataset'] == 'Hippocampus':
             dataset = Hippocampus.fromFile(loc)
 
@@ -74,8 +80,11 @@ class JobTrainMultipath(Job):
         splits = self.config['Splits']
         testsplits = self.config['Testsplits']
         dataset.saveSplits(self.tmpdir)
-        targetsize = tuple(self.config["Patch size"])
+        # check if patch size isn't too large. If so make it smaller
+        # targetsize = tuple(self.config["Patch size"])
+        targetsize = tuple(set_patch_size(self.config))
         imgsize = targetsize
+
         transforms = [
             RandomCrop(output_size=imgsize),
             ToTensor()
@@ -106,13 +115,13 @@ class JobTrainMultipath(Job):
         logDataLoader(trainloader, self.tmpdir)
 
         return trainloader, testloader
-        
+
     def run(self):
         myconfig = self.config
 
         epochs = myconfig['Epochs']
         maxBatchesPerEpoch = myconfig["Batches per epoch"]
-        
+
         ##### Load model from source step
         sourcestep = myconfig["Model Source"]
         model_loc = os.path.join(self.datadir, sourcestep)
@@ -156,7 +165,7 @@ class JobTrainMultipath(Job):
         del trainer
         self.tearDown()
 
-        
+
 
 def main(configfile, name, tmpdir, homedir=None):
     job = JobTrainMultipath(configfile, name, tmpdir, homedir)
